@@ -1,0 +1,4 @@
+- insert:
+    - id: skill-manager
+      name: '@limalivy/dsh-skill-manager'
+      inject: [connection, webServer]

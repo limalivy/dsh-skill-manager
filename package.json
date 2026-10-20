@@ -1,0 +1,39 @@
+{
+  "name": "@limalivy/dsh-skill-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browse, create, edit, and delete local skills and AGENTS.md rules from the DeepSeek Harness Web UI.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/limalivy/dsh-skill-manager.git"
+  },
+  "exports": {
+    ".": "./host3.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "host3.js"
+  ],
+  "scripts": {
+    "test": "node skill-manager-test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}
