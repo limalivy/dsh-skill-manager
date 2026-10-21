@@ -2,15 +2,34 @@ window.__ModuleLoader__.load({
   id: '@limalivy/dsh-skill-manager',
   factory(require) {
     const React = require('react')
-    const { useCallback, useEffect, useMemo, useState } = React
+    const { useCallback, useEffect, useMemo, useRef, useState } = React
     const h = React.createElement
+
+    // Shared browser primitives (anchored panel placement, outside-pointer dismissal).
+    // They are part of the shell's platform module table; the fallbacks keep this
+    // bundle loadable if a release moves them.
+    const primitives = (() => {
+      try {
+        return require('@deepseek-ai/dsh-client-ui-primitives')
+      } catch {
+        return {}
+      }
+    })()
+    const useAnchoredPosition = primitives.useAnchoredPosition ?? (() => null)
+    const useDismissOnOutsidePointer = primitives.useDismissOnOutsidePointer ?? (() => {})
+    const createPortal = (() => {
+      try {
+        return require('react-dom').createPortal
+      } catch {
+        return undefined
+      }
+    })()
 
     const CHANNEL = '/skill-manager'
     const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
     const TEXT = {
       zh: {
-        open: '技能管理',
         title: '技能管理',
         close: '关闭',
         newSkill: '新建技能',
@@ -41,9 +60,12 @@ window.__ModuleLoader__.load({
         ruleMissing: '未创建',
         ruleHint: 'AGENTS.md 会在每次请求时作为规则注入，保存后下一次请求生效。',
         deleteRule: '删除规则文件',
+        dockTitle: '技能',
+        menuTitle: '本次对话用到的技能',
+        turnSkills: '本轮技能',
+        manage: '技能管理',
       },
       en: {
-        open: 'Skill Manager',
         title: 'Skill Manager',
         close: 'Close',
         newSkill: 'New skill',
@@ -74,6 +96,10 @@ window.__ModuleLoader__.load({
         ruleMissing: 'not created',
         ruleHint: 'AGENTS.md is injected as instructions on every request; a save applies to the next request.',
         deleteRule: 'Delete rule file',
+        dockTitle: 'Skills',
+        menuTitle: 'Skills used in this conversation',
+        turnSkills: 'Skills this turn',
+        manage: 'Manage skills',
       },
     }
 
@@ -85,10 +111,36 @@ window.__ModuleLoader__.load({
     }
 
     const CSS = `
-.sm-bar { display:flex; align-items:center; gap:8px; padding:4px 2px; }
-.sm-bar button { height:26px; padding:0 10px; border-radius:7px; border:1px solid var(--dsw-alias-border-l1);
-  background:var(--dsw-alias-bg-layer-1); color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; cursor:pointer;
-  flex:none; white-space:nowrap; }
+.sm-dock { position:relative; display:inline-flex; flex:none; }
+.sm-icon { width:28px; height:28px; padding:0; border-radius:8px; border:1px solid var(--dsw-alias-border-l1);
+  background:var(--dsw-alias-bg-layer-1); color:var(--dsw-alias-label-secondary); display:inline-flex;
+  align-items:center; justify-content:center; cursor:pointer; flex:none; }
+.sm-icon:hover, .sm-icon[aria-expanded="true"] { background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); }
+.sm-menu { z-index:1100; box-sizing:border-box; width:min(268px,100vw - 24px); padding:6px; border-radius:var(--dsw-radius-lg);
+  background:var(--dsw-specific-menu); backdrop-filter:var(--dsw-menu-backdrop-filter);
+  border:1px solid var(--dsw-alias-border-l1); box-shadow:var(--dsw-elevation-prominent);
+  color:var(--dsw-alias-label-secondary); font-size:12px; line-height:20px; position:fixed; }
+.sm-menu-head { padding:5px 8px 3px; font-size:11px; color:var(--dsw-alias-label-tertiary); }
+.sm-menu-list { max-height:240px; overflow-y:auto; display:flex; flex-direction:column; }
+.sm-menu-item { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:7px;
+  color:var(--dsw-alias-label-primary); }
+.sm-menu-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sm-menu-count { flex:none; color:var(--dsw-alias-label-tertiary); font-variant-numeric:tabular-nums; font-size:11px; }
+.sm-menu-empty { padding:8px; color:var(--dsw-alias-label-tertiary); }
+.sm-menu-sep { height:1px; margin:5px 6px; background:var(--dsw-alias-border-l1); }
+.sm-menu-manage { display:flex; align-items:center; gap:8px; width:100%; padding:6px 8px; border-radius:7px;
+  border:none; background:transparent; color:var(--dsw-alias-label-primary); font:inherit; font-size:12px;
+  cursor:pointer; text-align:left; }
+.sm-menu-manage:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.sm-menu-glyph { display:inline-flex; flex:none; color:var(--dsw-alias-label-tertiary); }
+.sm-turn { display:inline-flex; align-items:center; flex:none; }
+.sm-turn-trigger { display:inline-flex; align-items:center; gap:4px; height:24px; padding:0 6px; border:none;
+  border-radius:var(--dsw-radius-sm); background:transparent; color:var(--dsw-alias-label-tertiary);
+  font:inherit; font-size:var(--dsh-content-font-size-secondary,13px); cursor:pointer; }
+.sm-turn-trigger:hover, .sm-turn-trigger[aria-expanded="true"] { background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary); }
+.sm-turn-trigger svg { width:13px; height:13px; flex:none; }
+.sm-turn-count { font-variant-numeric:tabular-nums; }
 .sm-backdrop { position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center;
   padding:28px; background:rgba(0,0,0,.38); }
 .sm-dialog { width:min(1040px,96vw); height:min(800px,92vh); display:flex; flex-direction:column; gap:10px;
@@ -154,6 +206,25 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Locale-bound text lookup for the dock and the turn footer. */
+    function useText(ctx) {
+      const locale = (() => {
+        try {
+          return ctx.get('locale')
+        } catch {
+          return undefined
+        }
+      })()
+      const [lang, setLang] = useState(() => localeId(locale))
+      useEffect(() => {
+        if (!locale?.subscribe) return undefined
+        const read = () => setLang(localeId(locale))
+        read()
+        return locale.subscribe(read)
+      }, [locale])
+      return (key) => (TEXT[lang === 'zh' ? 'zh' : 'en'][key] ?? key)
+    }
+
     const RULE_LABELS = {
       'user-dsh': { zh: '全局 · ~/.dsh/AGENTS.md', en: 'Global · ~/.dsh/AGENTS.md' },
       'user-agents': { zh: '全局 · ~/.agents/AGENTS.md', en: 'Global · ~/.agents/AGENTS.md' },
@@ -176,7 +247,348 @@ window.__ModuleLoader__.load({
       return typeof path === 'string' ? path.replace(/^\/Users\/[^/]+/, '~') : ''
     }
 
-    function SkillManager({ ctx }) {
+    // -------------------------------------------------------------------------
+    // Skill usage per conversation
+    // -------------------------------------------------------------------------
+
+    const EMPTY_USAGE = { names: [], byTurn: new Map(), byMessage: new Map(), total: 0 }
+
+    /** Resolve the session the main conversation area currently renders. */
+    function resolveSessionId(ctx) {
+      try {
+        const id = ctx.get('uiSession')?.adapter?.current?.getSnapshot?.()?.key
+        if (typeof id === 'string' && id !== '') return id
+      } catch {
+        // Fall through to the next source.
+      }
+      try {
+        const id = ctx.get('uiWorkspace')?.mainReference?.sessionId
+        if (typeof id === 'string' && id !== '') return id
+      } catch {
+        // Fall through to the next source.
+      }
+      try {
+        const byId = ctx.get('sessions')?.list?.getSnapshot?.()?.byId ?? {}
+        for (const entry of Object.values(byId)) {
+          if ((entry?.retainedBy?.mainView ?? 0) > 0) return entry.id
+        }
+      } catch {
+        // Fall through to no session.
+      }
+      return undefined
+    }
+
+    /** Session events currently resident in the client event window. */
+    function sessionEntries(ctx, sessionId) {
+      try {
+        const entries = ctx.get('sessions')?.binding?.(sessionId)?.eventSource?.getSnapshot?.()?.entries
+        return Array.isArray(entries) ? entries : []
+      } catch {
+        return []
+      }
+    }
+
+    /**
+     * Fold durable session events into per-turn and per-conversation skill usage.
+     * Two representations carry a used skill: the `skill` tool call (model-invoked)
+     * and a `skill-invocation` user message (a `/name` gesture). A `skill-catalog`
+     * message lists availability, not usage, so it is ignored.
+     *
+     * The client event window stores `{ event, ... }` records, so every read
+     * unwraps `entry.event`; a bare event stays readable for direct callers.
+     */
+    function collectUsage(entries) {
+      const events = []
+      for (const entry of entries) {
+        const event = entry?.event ?? entry
+        if (event !== undefined && event !== null) events.push(event)
+      }
+      const byTurn = new Map()
+      const byMessage = new Map()
+      const order = []
+      const counts = new Map()
+      const starts = []
+      for (const event of events) {
+        if (event.type === 'turn/start' && typeof event.data?.turn === 'number') {
+          starts.push({ turn: event.data.turn, seq: typeof event.seq === 'number' ? event.seq : 0 })
+        }
+      }
+      const turnAt = (seq) => {
+        let found
+        for (const item of starts) {
+          if (item.seq <= (typeof seq === 'number' ? seq : 0)) found = item.turn
+          else break
+        }
+        return found
+      }
+      const record = (name, turn) => {
+        if (typeof name !== 'string' || name === '') return
+        if (typeof turn === 'number') {
+          const list = byTurn.get(turn)
+          if (list === undefined) byTurn.set(turn, [name])
+          else if (!list.includes(name)) list.push(name)
+        }
+        if (!counts.has(name)) order.push(name)
+        counts.set(name, (counts.get(name) ?? 0) + 1)
+      }
+      for (const event of events) {
+        if (event.type === 'assistant/message') {
+          const id = event.data?.message?.id
+          if (typeof id === 'string' && typeof event.data?.turn === 'number') byMessage.set(id, event.data.turn)
+        } else if (event.type === 'tool/call' && event.data?.name === 'skill') {
+          let name
+          try {
+            name = JSON.parse(event.data.arguments ?? '{}')?.name
+          } catch {
+            name = undefined
+          }
+          record(name, event.data?.turn)
+        } else if (event.type === 'user/message' && event.data?.source?.kind === 'skill-invocation') {
+          record(event.data.source.name, turnAt(event.seq))
+        }
+      }
+      return {
+        names: order.map((name) => ({ name, uses: counts.get(name) ?? 1 })),
+        byTurn,
+        byMessage,
+        total: order.length,
+      }
+    }
+
+    /** Poll the resident event window; changed events replace the folded usage. */
+    function useSkillUsage(ctx) {
+      const [usage, setUsage] = useState(EMPTY_USAGE)
+      useEffect(() => {
+        let alive = true
+        let signature = ''
+        const read = () => {
+          if (!alive) return
+          const sessionId = resolveSessionId(ctx)
+          const entries = sessionId === undefined ? [] : sessionEntries(ctx, sessionId)
+          const last = entries[entries.length - 1]
+          const tail = last === undefined ? 0 : last.event?.seq ?? last.seq ?? 0
+          const next = `${sessionId ?? ''}:${entries.length}:${tail}`
+          if (next === signature) return
+          signature = next
+          setUsage(collectUsage(entries))
+        }
+        read()
+        const timer = setInterval(read, 800)
+        return () => {
+          alive = false
+          clearInterval(timer)
+        }
+      }, [ctx])
+      return usage
+    }
+
+    const DOCK_ICON = h(
+      'svg',
+      {
+        viewBox: '0 0 16 16',
+        width: 15,
+        height: 15,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.4,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        'aria-hidden': true,
+      },
+      h('path', { d: 'M6.1 2.1 7.3 5.2 10.4 6.4 7.3 7.6 6.1 10.7 4.9 7.6 1.8 6.4 4.9 5.2Z' }),
+      h('path', { d: 'M12.2 9.2 12.8 10.7 14.3 11.3 12.8 11.9 12.2 13.4 11.6 11.9 10.1 11.3 11.6 10.7Z' }),
+    )
+
+    const MANAGE_ICON = h(
+      'svg',
+      {
+        viewBox: '0 0 16 16',
+        width: 14,
+        height: 14,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.3,
+        strokeLinecap: 'round',
+        'aria-hidden': true,
+      },
+      h('path', { d: 'M2.8 5h10.4M2.8 8h10.4M2.8 11h10.4' }),
+      h('circle', { cx: 6, cy: 5, r: 1.4, fill: 'currentColor', stroke: 'none' }),
+      h('circle', { cx: 10.2, cy: 8, r: 1.4, fill: 'currentColor', stroke: 'none' }),
+      h('circle', { cx: 5.4, cy: 11, r: 1.4, fill: 'currentColor', stroke: 'none' }),
+    )
+
+    /**
+     * Composer-dock entry: one icon that opens a menu of the skills this
+     * conversation used, with the panel launcher as the last row.
+     */
+    function SkillMenuDock({ ctx, pluginCtx }) {
+      const bridge = pluginCtx ?? ctx
+      const t = useText(bridge)
+
+      const usage = useSkillUsage(bridge)
+      const [open, setOpen] = useState(false)
+      const [panelOpen, setPanelOpen] = useState(false)
+      const rootRef = useRef(null)
+      const menuRef = useRef(null)
+      const position = useAnchoredPosition({ open, anchorRef: rootRef, panelRef: menuRef, side: 'top', gap: 8, margin: 12 })
+      useDismissOnOutsidePointer(rootRef, open, setOpen, menuRef)
+
+      useEffect(() => {
+        if (!open) return undefined
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('keydown', onKeyDown)
+        return () => document.removeEventListener('keydown', onKeyDown)
+      }, [open])
+
+      const items = usage.names
+      const content = []
+      if (items.length > 0) {
+        content.push(h('div', { key: 'head', className: 'sm-menu-head' }, t('menuTitle')))
+        content.push(
+          h(
+            'div',
+            { key: 'list', className: 'sm-menu-list' },
+            ...items.map((item) =>
+              h(
+                'div',
+                { key: item.name, className: 'sm-menu-item' },
+                h('span', { className: 'sm-menu-name', title: item.name }, item.name),
+                item.uses > 1 ? h('span', { className: 'sm-menu-count' }, `×${item.uses}`) : null,
+              ),
+            ),
+          ),
+        )
+        content.push(h('div', { key: 'sep', className: 'sm-menu-sep' }))
+      }
+      content.push(
+        h(
+          'button',
+          {
+            key: 'manage',
+            type: 'button',
+            className: 'sm-menu-manage',
+            onClick: () => {
+              setOpen(false)
+              setPanelOpen(true)
+            },
+          },
+          h('span', { className: 'sm-menu-glyph' }, MANAGE_ICON),
+          t('manage'),
+        ),
+      )
+
+      let menu = null
+      if (open) {
+        const node = h(
+          'div',
+          {
+            ref: menuRef,
+            className: 'sm-menu',
+            role: 'dialog',
+            'aria-label': t('menuTitle'),
+            style: position ?? { position: 'absolute', bottom: 'calc(100% + 8px)', left: 0 },
+          },
+          ...content,
+        )
+        menu = createPortal === undefined ? node : createPortal(node, document.body)
+      }
+
+      const panel = panelOpen ? h(SkillManagerPanel, { ctx: bridge, onClose: () => setPanelOpen(false) }) : null
+
+      return h(
+        'div',
+        { ref: rootRef, className: 'sm-dock' },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'sm-icon',
+            title: t('dockTitle'),
+            'aria-label': t('dockTitle'),
+            'aria-haspopup': 'dialog',
+            'aria-expanded': open,
+            onClick: () => setOpen(!open),
+          },
+          DOCK_ICON,
+        ),
+        menu,
+        h('style', null, CSS),
+        panel === null ? null : createPortal === undefined ? panel : createPortal(panel, document.body),
+      )
+    }
+
+    /**
+     * Turn footer entry: one icon with this turn's skill count; clicking opens
+     * the turn's skill names, so a turn with many skills costs one button width.
+     */
+    function TurnSkillBadges({ ctx, pluginCtx, messageId }) {
+      const bridge = pluginCtx ?? ctx
+      const t = useText(bridge)
+      const usage = useSkillUsage(bridge)
+      const rootRef = useRef(null)
+      const menuRef = useRef(null)
+      const [open, setOpen] = useState(false)
+      const position = useAnchoredPosition({ open, anchorRef: rootRef, panelRef: menuRef, side: 'top', gap: 8, margin: 12 })
+      useDismissOnOutsidePointer(rootRef, open, setOpen, menuRef)
+
+      useEffect(() => {
+        if (!open) return undefined
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('keydown', onKeyDown)
+        return () => document.removeEventListener('keydown', onKeyDown)
+      }, [open])
+
+      const turn = typeof messageId === 'string' ? usage.byMessage.get(messageId) : undefined
+      const names = typeof turn === 'number' ? usage.byTurn.get(turn) : undefined
+      if (names === undefined || names.length === 0) return null
+
+      let menu = null
+      if (open) {
+        const node = h(
+          'div',
+          {
+            ref: menuRef,
+            className: 'sm-menu',
+            role: 'dialog',
+            'aria-label': t('turnSkills'),
+            style: position ?? { position: 'absolute', bottom: 'calc(100% + 8px)', left: 0 },
+          },
+          h('div', { className: 'sm-menu-head' }, t('turnSkills')),
+          h(
+            'div',
+            { className: 'sm-menu-list' },
+            ...names.map((name) => h('div', { key: name, className: 'sm-menu-item' }, h('span', { className: 'sm-menu-name' }, name))),
+          ),
+        )
+        menu = createPortal === undefined ? node : createPortal(node, document.body)
+      }
+
+      return h(
+        'span',
+        { ref: rootRef, className: 'sm-turn' },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'sm-turn-trigger',
+            title: names.join(', '),
+            'aria-label': `${t('turnSkills')}: ${names.join(', ')}`,
+            'aria-haspopup': 'dialog',
+            'aria-expanded': open,
+            onClick: () => setOpen(!open),
+          },
+          DOCK_ICON,
+          h('span', { className: 'sm-turn-count' }, String(names.length)),
+        ),
+        menu,
+      )
+    }
+
+    function SkillManagerPanel({ ctx, onClose }) {
       const locale = (() => {
         try {
           return ctx.get('locale')
@@ -193,7 +605,7 @@ window.__ModuleLoader__.load({
       }, [locale])
       const t = (key) => (TEXT[lang === 'zh' ? 'zh' : 'en'][key] ?? key)
 
-      const [open, setOpen] = useState(false)
+      const [open] = useState(true)
       const [data, setData] = useState(null)
       const [selected, setSelected] = useState(null)
       const [draft, setDraft] = useState(null)
@@ -280,7 +692,7 @@ window.__ModuleLoader__.load({
         const onKey = (event) => {
           if (event.key !== 'Escape') return
           if (creating) setCreating(false)
-          else setOpen(false)
+          else onClose()
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
@@ -480,15 +892,6 @@ window.__ModuleLoader__.load({
         }
       }, [rule, ruleArmed, call, loadRules, t])
 
-      if (!open) {
-        return h(
-          'div',
-          { className: 'sm-bar' },
-          h('button', { type: 'button', onClick: () => setOpen(true) }, `＋ ${t('open')}`),
-          h('style', null, CSS),
-        )
-      }
-
       const groups = []
       for (const skill of filtered) {
         const label = rootLabel(skill.rootId, lang)
@@ -594,7 +997,7 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { className: 'sm-backdrop', onMouseDown: (event) => event.target === event.currentTarget && setOpen(false) },
+        { className: 'sm-backdrop', onMouseDown: (event) => event.target === event.currentTarget && onClose() },
         h('style', null, CSS),
         h(
           'div',
@@ -606,7 +1009,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'sm-head-actions' },
               h('button', { type: 'button', className: 'sm-btn', disabled: busy, onClick: refresh }, t('refresh')),
               h('button', { type: 'button', className: 'sm-btn sm-primary', onClick: () => setCreating(true) }, `＋ ${t('newSkill')}`),
-              h('button', { type: 'button', className: 'sm-btn', onClick: () => setOpen(false) }, t('close')),
+              h('button', { type: 'button', className: 'sm-btn', onClick: () => onClose() }, t('close')),
             ),
           ),
           h('div', { className: 'sm-toolbar' },
@@ -643,7 +1046,16 @@ window.__ModuleLoader__.load({
       inject: ['slots'],
       apply(ctx) {
         ctx.slots.inject('conversation.composer.dock', () =>
-          ctx.slots.register({ name: 'conversation.composer.dock', id: 'dsh-skill-manager', order: 6 }, SkillManager),
+          ctx.slots.register(
+            { name: 'conversation.composer.dock', id: 'dsh-skill-manager', order: 6, inject: () => ({ pluginCtx: ctx }) },
+            SkillMenuDock,
+          ),
+        )
+        ctx.slots.inject('conversation.chat.assistant-actions', () =>
+          ctx.slots.register(
+            { name: 'conversation.chat.assistant-actions', id: 'dsh-skill-manager-turn', order: 6, inject: () => ({ pluginCtx: ctx }) },
+            TurnSkillBadges,
+          ),
         )
       },
     }

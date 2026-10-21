@@ -7,7 +7,7 @@
 一个 DeepSeek Harness 持久化插件，Host 半与 Client 半在同一个包里：
 
 - **Host 半**（`host3.js`）：注册 `/skill-manager` HTTP 路由，发现技能与规则文件，做增删改查与路径守卫。
-- **Client 半**（`client.js`）：在 `conversation.composer.dock` 挂一个按钮条，展开为管理面板。
+- **Client 半**（`client.js`）：在 `conversation.composer.dock` 挂一个图标入口，点开是"本次对话用到的技能"列表（末行固定为「技能管理」）；管理面板本身也在这里；另在 `conversation.chat.assistant-actions` 挂本轮技能图标 + 个数，点击展开本轮技能名。
 
 两半通过同源 `fetch('/skill-manager/<endpoint>')` 通信，不经过 Remote 层。
 
@@ -40,13 +40,13 @@ npm test                                          # Host 接口测试
 
 `package.json.name`、`client.js` 中 `__ModuleLoader__.load({ id })` 的 `id`、`cordis.patch.yml` 的 `name`、profile 里的依赖键，四处必须同一个包名。`id` 与包名不一致会报 `loaded without registering "<pkg>"`。
 
-**2. dock 入口 id 唯一**
+**2. 入口 id 唯一**
 
-当前为 `dsh-skill-manager`。与其他插件撞 id 会报 `list slot "conversation.composer.dock" already has an entry with id ...`。
+dock 入口 `dsh-skill-manager`，每轮技能名入口 `dsh-skill-manager-turn`。与其他插件撞 id 会报 `list slot "<slot>" already has an entry with id ...`。
 
-**3. Client 半单组件**
+**3. Client 半的组件与样式**
 
-整个面板是一个组件，元素只用 `div` / `button` / `input` / `textarea` / `select` / `style`。不要拆子组件、不要引第三方 UI 库、不要注册 `settings.section`：第三方 client 插件的组合组件在真实页面上不会提交渲染，表现为面板一片空白。颜色只用 `--dsw-alias-*` 令牌，样式类统一 `sm-` 前缀。
+三个组件：`SkillMenuDock`（图标入口 + 弹窗 + 管理面板）、`SkillManagerPanel`（面板本体）、`TurnSkillBadges`（每轮技能名）。元素只用 `div` / `span` / `button` / `input` / `textarea` / `select` / `svg` / `style`，不引第三方 UI 库，不注册 `settings.section`。弹窗与面板都用 `createPortal` 挂到 `document.body`：composer 卡片的祖先可能带 `transform`，直接挂在里面会让 `position:fixed` 退化并被裁切。颜色只用 `--dsw-alias-*` / `--dsw-*` 令牌，样式类统一 `sm-` 前缀。
 
 **4. Host 半的注入方式**
 
@@ -85,6 +85,19 @@ handler 第一步调用 `ctx.connection.requestRejection({ headers })`，返回�
 | `project-local` | `<项目>/AGENTS.local.md` |
 
 frontmatter 必须有 kebab-case 的 `name` 与非空 `description`，可选 `whenToUse`、`disable-model-invocation`、`user-invocable`。改写时逐行保留未触碰内容，只替换目标字段。
+
+### 技能用量的来源
+
+用量完全由 Client 半从会话事件里折叠，Host 不参与：
+
+| 事件 | 含义 | 轮次归属 |
+|---|---|---|
+| `tool/call` 且 `data.name === 'skill'` | 模型加载（`arguments` 里是名字） | `data.turn` |
+| `user/message` 且 `source.kind === 'skill-invocation'` | 用户 `/名字` 注入 | 事件 `seq` 落在哪个 `turn/start` 区间 |
+| `assistant/message` 且 `data.message.id` | 每轮底部 `messageId → turn` 映射 | `data.turn` |
+| `user/message` 且 `source.kind === 'skill-catalog'` | 可用清单，**不是**用量 | 忽略 |
+
+会话 id 依次从 `uiSession.adapter.current`、`uiWorkspace.mainReference`、`sessions.list.byId[*].retainedBy.mainView` 解析；事件取自 `sessions.binding(id).eventSource.getSnapshot().entries`。**这个窗口里每条记录是 `{ event, … }` 包装**，事件本体在 `entry.event`（`assembler.replaceWindow` 与 `installWindow` 都按 `entry.event.seq` 排序），直接读 `entry.type` / `entry.data` 会永远匹配不到。只覆盖浏览器已加载的事件窗口——没翻页加载的早期历史不在统计内，这是已知上限，不要假装它是全量。
 
 ## 修改流程
 
