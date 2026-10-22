@@ -112,10 +112,14 @@ window.__ModuleLoader__.load({
 
     const CSS = `
 .sm-dock { position:relative; display:inline-flex; flex:none; }
-.sm-icon { width:28px; height:28px; padding:0; border-radius:8px; border:1px solid var(--dsw-alias-border-l1);
-  background:var(--dsw-alias-bg-layer-1); color:var(--dsw-alias-label-secondary); display:inline-flex;
-  align-items:center; justify-content:center; cursor:pointer; flex:none; }
-.sm-icon:hover, .sm-icon[aria-expanded="true"] { background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); }
+.sm-icon { box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; padding:0;
+  width:calc(22px + var(--dsh-content-font-delta-secondary,0px));
+  height:calc(22px + var(--dsh-content-font-delta-secondary,0px));
+  border:none; border-radius:var(--dsw-radius-sm); background:0 0; color:var(--dsw-alias-label-tertiary);
+  font:inherit; font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);
+  line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px)); cursor:pointer; flex:none; }
+.sm-icon svg { width:14px; height:14px; flex:none; }
+.sm-icon:hover, .sm-icon[aria-expanded="true"] { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-secondary); }
 .sm-menu { z-index:1100; box-sizing:border-box; width:min(268px,100vw - 24px); padding:6px; border-radius:var(--dsw-radius-lg);
   background:var(--dsw-specific-menu); backdrop-filter:var(--dsw-menu-backdrop-filter);
   border:1px solid var(--dsw-alias-border-l1); box-shadow:var(--dsw-elevation-prominent);
@@ -126,7 +130,6 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-label-primary); }
 .sm-menu-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sm-menu-count { flex:none; color:var(--dsw-alias-label-tertiary); font-variant-numeric:tabular-nums; font-size:11px; }
-.sm-menu-empty { padding:8px; color:var(--dsw-alias-label-tertiary); }
 .sm-menu-sep { height:1px; margin:5px 6px; background:var(--dsw-alias-border-l1); }
 .sm-menu-manage { display:flex; align-items:center; gap:8px; width:100%; padding:6px 8px; border-radius:7px;
   border:none; background:transparent; color:var(--dsw-alias-label-primary); font:inherit; font-size:12px;
@@ -134,12 +137,13 @@ window.__ModuleLoader__.load({
 .sm-menu-manage:hover { background:var(--dsw-alias-interactive-bg-hover); }
 .sm-menu-glyph { display:inline-flex; flex:none; color:var(--dsw-alias-label-tertiary); }
 .sm-turn { display:inline-flex; align-items:center; flex:none; }
-.sm-turn-trigger { display:inline-flex; align-items:center; gap:4px; height:24px; padding:0 6px; border:none;
-  border-radius:var(--dsw-radius-sm); background:transparent; color:var(--dsw-alias-label-tertiary);
-  font:inherit; font-size:var(--dsh-content-font-size-secondary,13px); cursor:pointer; }
+.sm-turn-trigger { box-sizing:border-box; display:inline-flex; align-items:center; gap:4px;
+  height:calc(28px + var(--dsh-content-font-delta,0px)); padding:0 6px; border:none;
+  border-radius:var(--dsw-radius-sm); background:0 0; color:var(--dsw-alias-label-tertiary);
+  font:inherit; font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px); cursor:pointer; }
 .sm-turn-trigger:hover, .sm-turn-trigger[aria-expanded="true"] { background:var(--dsw-alias-interactive-bg-hover);
   color:var(--dsw-alias-label-secondary); }
-.sm-turn-trigger svg { width:13px; height:13px; flex:none; }
+.sm-turn-trigger svg { width:calc(15px + var(--dsh-content-font-delta,0px)); height:calc(15px + var(--dsh-content-font-delta,0px)); flex:none; }
 .sm-turn-count { font-variant-numeric:tabular-nums; }
 .sm-backdrop { position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center;
   padding:28px; background:rgba(0,0,0,.38); }
@@ -148,7 +152,11 @@ window.__ModuleLoader__.load({
   background:var(--dsw-alias-bg-base); color:var(--dsw-alias-label-primary); box-shadow:0 24px 64px rgba(0,0,0,.32); }
 .sm-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .sm-head h3 { margin:0; font-size:15px; font-weight:600; }
-.sm-head-actions { display:flex; gap:8px; }
+.sm-head-actions { display:flex; gap:8px; align-items:center; }
+.sm-close { border-radius:var(--dsw-radius-sm); cursor:pointer; width:28px; height:28px;
+  color:var(--dsw-alias-label-primary); background:0 0; border:none; justify-content:center; align-items:center;
+  padding:0; display:inline-flex; flex:none; }
+.sm-close:hover { color:var(--dsw-alias-label-secondary); }
 .sm-btn { height:28px; padding:0 10px; border-radius:7px; border:1px solid var(--dsw-alias-border-l1);
   background:var(--dsw-alias-bg-layer-1); color:var(--dsw-alias-label-primary); font:inherit; font-size:12px;
   cursor:pointer; flex:none; white-space:nowrap; }
@@ -416,6 +424,9 @@ window.__ModuleLoader__.load({
       h('circle', { cx: 10.2, cy: 8, r: 1.4, fill: 'currentColor', stroke: 'none' }),
       h('circle', { cx: 5.4, cy: 11, r: 1.4, fill: 'currentColor', stroke: 'none' }),
     )
+
+    /** The shell's own close glyph, so the panel header matches Settings. */
+    const CLOSE_ICON = typeof primitives.IconCloseOutlineRegular === 'function' ? primitives.IconCloseOutlineRegular : null
 
     /**
      * Composer-dock entry: one icon that opens a menu of the skills this
@@ -1009,7 +1020,11 @@ window.__ModuleLoader__.load({
             h('div', { className: 'sm-head-actions' },
               h('button', { type: 'button', className: 'sm-btn', disabled: busy, onClick: refresh }, t('refresh')),
               h('button', { type: 'button', className: 'sm-btn sm-primary', onClick: () => setCreating(true) }, `＋ ${t('newSkill')}`),
-              h('button', { type: 'button', className: 'sm-btn', onClick: () => onClose() }, t('close')),
+              h(
+                'button',
+                { type: 'button', className: 'sm-close', title: t('close'), 'aria-label': t('close'), onClick: () => onClose() },
+                CLOSE_ICON === null ? '×' : h(CLOSE_ICON, { size: 14 }),
+              ),
             ),
           ),
           h('div', { className: 'sm-toolbar' },
