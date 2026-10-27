@@ -903,12 +903,16 @@ window.__ModuleLoader__.load({
         }
       }, [rule, ruleArmed, call, loadRules, t])
 
+      // Host sorts skills by name, so roots interleave. Sorting by root first keeps
+      // one group per root: grouping consecutive runs alone would repeat the header
+      // (and its React key) before every row.
+      const rootIndex = new Map((data?.roots ?? []).map((root, index) => [root.id, index]))
+      const rootRank = (id) => rootIndex.get(id) ?? rootIndex.size
       const groups = []
-      for (const skill of filtered) {
-        const label = rootLabel(skill.rootId, lang)
+      for (const skill of [...filtered].sort((a, b) => rootRank(a.rootId) - rootRank(b.rootId))) {
         const last = groups[groups.length - 1]
-        if (last && last.label === label) last.items.push(skill)
-        else groups.push({ label, items: [skill] })
+        if (last && last.rootId === skill.rootId) last.items.push(skill)
+        else groups.push({ rootId: skill.rootId, label: rootLabel(skill.rootId, lang), items: [skill] })
       }
 
       const skillsPanel = [
@@ -922,7 +926,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'sm-list' },
               groups.length === 0 ? h('span', { className: 'sm-status' }, t('empty')) : null,
               ...groups.flatMap((group) => [
-                h('div', { key: `g-${group.label}`, className: 'sm-group' }, group.label),
+                h('div', { key: `g-${group.rootId}`, className: 'sm-group' }, group.label),
                 ...group.items.map((skill) =>
                   h('button', {
                     key: skill.path,
